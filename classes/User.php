@@ -1,10 +1,11 @@
-<!-- User: Responsible for the logic of interacting with users. -->
 <?php
+
+// User: Responsible for the logic of interacting with users.
 
 class User
 {
     private $conn;
-    
+
     public function __construct(PDO $conn)
     {
         $this->conn = $conn;
@@ -13,19 +14,20 @@ class User
     public function register($fullName, $email, $password, $phone)
     {
         $fullName = trim($fullName);
-        if ($fullName === "") {
+
+        if ($fullName === "" || mb_strlen($fullName) > 100) {
             return false;
         }
-        
+
         $email = trim($email);
 
         // filter_var: A ready-made function in PHP to examine or manipulate data
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 100) {
             return false;
         }
 
         // strlen: It is a built-in PHP function that returns the length of a string in bytes.
-        if (strlen($password) < 8) {
+        if (strlen($password) < 8 || strlen($password) > 255) {
             return false;
         }
 
@@ -39,18 +41,21 @@ class User
         // password_hash: It is a built-in PHP function that converts a password into a secure password hash, using an algorithm specifically designed for storing passwords.
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-        $sql = "SELECT user_id FROM `user` WHERE email = ?";
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute([$email]);
-        $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($existingUser !== false) {
-            return false;
-        }
-
-        $sql = "INSERT INTO `user` (full_name, email, password, phone) VALUES (?, ?, ?, ?)";
-
         try {
+
+            $sql = "SELECT user_id FROM `user` WHERE email = ?";
+            $stmt = $this->conn->prepare($sql);
+            $stmt->execute([$email]);
+
+            $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existingUser !== false) {
+                return false;
+            }
+
+            $sql = "INSERT INTO `user` (full_name, email, password, phone)
+                    VALUES (?, ?, ?, ?)";
+
             $stmt = $this->conn->prepare($sql);
 
             $stmt->execute([
@@ -63,6 +68,7 @@ class User
             return true;
 
         } catch (PDOException $e) {
+
             error_log("Registration failed: " . $e->getMessage());
             return false;
         }
@@ -72,23 +78,39 @@ class User
     {
         $email = trim($email);
 
-        $sql = "SELECT user_id, full_name, email, password, role
-                FROM `user`
-                WHERE email = ?";
-
-        $stmt = $this->conn->prepare($sql);
-
-        $stmt->execute([$email]);
-
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($user && password_verify($password, $user["password"])) {
-            
-            unset($user["password"]);    
-        
-            return $user;
+        if (
+            !filter_var($email, FILTER_VALIDATE_EMAIL) ||
+            strlen($email) > 100 ||
+            $password === ""
+        ) {
+            return false;
         }
 
-        return false;
+        try {
+
+            $sql = "SELECT user_id, full_name, email, password, role
+                    FROM `user`
+                    WHERE email = ?";
+
+            $stmt = $this->conn->prepare($sql);
+
+            $stmt->execute([$email]);
+
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($user && password_verify($password, $user["password"])) {
+
+                unset($user["password"]);
+
+                return $user;
+            }
+
+            return false;
+
+        } catch (PDOException $e) {
+
+            error_log("Login failed: " . $e->getMessage());
+            return false;
+        }
     }
 }
